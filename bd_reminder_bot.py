@@ -7,7 +7,7 @@ from telethon import TelegramClient, events
 import locale
 
 # Устанавливаем локализацию на русский язык
-locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
+# locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 # Загрузка конфигурации из .env файла
 load_dotenv()
