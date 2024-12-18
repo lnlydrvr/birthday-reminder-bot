@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events
 import locale
 
-# Устанавливаем локализацию на русский язык
+# Устанавливаем локализацию на русский язык (убрана для Docker)
 # locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 # Загрузка конфигурации из .env файла
@@ -39,6 +39,17 @@ conn.commit()
 
 # Словарь для хранения состояний пользователей
 user_states = {}
+
+# Словарь с названиями месяцев и их числовыми значениями
+MONTHS = {
+    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
+    'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
+}
+
+# Функция для преобразования даты в числовой формат для сортировки
+def date_to_sort_key(date):
+    day, month = date.split()
+    return (MONTHS[month], int(day))
 
 # Запуск бота
 @client.on(events.NewMessage(pattern='/start'))
@@ -113,10 +124,16 @@ async def list_birthdays(event):
     if not users:
         await event.respond("Нет записанных дней рождений.")
     else:
+        # Сортировка с использованием функции date_to_sort_key
+        sorted_users = sorted(users, key=lambda x: date_to_sort_key(x[2]))
+
+        # Формирование сообщения
         message = "Дни рождения:\n"
-        for user in users:
-            last_name_text = f" {user[1]}" if user[1] else ""
-            message += f"{user[0]}{last_name_text}: {user[2]}\n"
+        for user in sorted_users:
+            first_name, last_name, date_of_birth = user
+            last_name_text = f" {last_name}" if last_name else ""
+            message += f"{first_name}{last_name_text} - {date_of_birth}\n"
+        
         await event.respond(message)
 
 # Запуск задачи напоминания о днях рождения
