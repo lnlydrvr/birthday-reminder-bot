@@ -4,10 +4,7 @@ import asyncio
 from datetime import datetime, time
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
-import locale
-
-# Устанавливаем локализацию на русский язык (убрана для Docker)
-# locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
+from telethon.tl.types import ChannelParticipantsAdmins
 
 # Загрузка конфигурации из .env файла
 load_dotenv()
@@ -28,115 +25,147 @@ cursor.execute('''
 CREATE TABLE IF NOT EXISTS birthdays (
     user_id INTEGER NOT NULL,
     chat_id INTEGER NOT NULL,
-    username TEXT NOT NULL,
+    username TEXT,
     first_name TEXT NOT NULL,
     last_name TEXT,
     date_of_birth TEXT NOT NULL,
+    added_by_admin INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, chat_id)
 )
 ''')
 conn.commit()
 
-# Словарь для хранения состояний пользователей
-user_states = {}
+# Функция для проверки прав администратора
+async def is_admin(chat_id, user_id):
+    admins = await client.get_participants(chat_id, filter=ChannelParticipantsAdmins)
+    return any(admin.id == user_id for admin in admins)
 
-# Словарь с названиями месяцев и их числовыми значениями
-MONTHS = {
-    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
-    'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
-}
+# Функция удаления сообщений через 2 минуты
+async def delete_message_later(event, message):
+    await asyncio.sleep(60)
+    await client.delete_messages(event.chat_id, [event.message.id, message.id])
 
-# Функция для преобразования даты в числовой формат для сортировки
-def date_to_sort_key(date):
-    day, month = date.split()
-    return (MONTHS[month], int(day))
-
-# Запуск бота
+# Команда /start
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("Привет! Я бот-напоминалка о днях рождениях. Используй команду /add для добавления дня рождения.")
+    message = await event.respond("Привет! Я бот, который напоминает о днях рождениях. 🎊\n"
+                                  "\n"
+                                  "Вот мои команды для всех пользователей:\n"
+                                  "‣ /user_add ДД-ММ-ГГГГ - добавить свой день рождения\n"
+                                  "‣ /list - вывести весь список дней рождений\n"
+                                  "\n"
+                                  "Команды для администраторов:\n"
+                                  "‣ /admin_add @username ДД-ММ-ГГГГ - добавить день рождения пользователя\n"
+                                  "‣ /admin_delete @username - удалить день рождения пользователя")
+    asyncio.create_task(delete_message_later(event, message))
 
-# Инициализация процесса записи дня рождения
-@client.on(events.NewMessage(pattern='/add'))
+# Команда для добавления дня рождения пользователем
+@client.on(events.NewMessage(pattern='/user_add'))
 async def add_birthday(event):
-    user_states[event.sender_id] = 'awaiting_date'
-    await event.respond("Пожалуйста, введите дату рождения в формате ДД-ММ-ГГГГ:")
+    args = event.message.text.split()
+    if len(args) != 2:
+        message = await event.respond("ℹ️ Использование: /user_add ДД-ММ-ГГГГ")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    date_str = args[1]
+    try:
+        date_of_birth = datetime.strptime(date_str, "%d-%m-%Y").strftime("%d %B").lower()
+    except ValueError:
+        message = await event.respond("❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ.")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    cursor.execute('''INSERT OR REPLACE INTO birthdays (user_id, chat_id, username, first_name, last_name, date_of_birth, added_by_admin)
+                      VALUES (?, ?, ?, ?, ?, ?, 0)''', (event.sender_id, event.chat_id, event.sender.username, event.sender.first_name, event.sender.last_name, date_of_birth))
+    conn.commit()
+    message = await event.respond(f"✅ Ваш день рождения добавлен: {date_of_birth}.")
+    asyncio.create_task(delete_message_later(event, message))
 
-# Отмена процесса записи дня рождения
-@client.on(events.NewMessage(pattern='/cancel'))
-async def cancel(event):
-    if event.sender_id in user_states and user_states[event.sender_id] == 'awaiting_date':
-        del user_states[event.sender_id]
-        await event.respond("Добавление дня рождения отменено.")
+# Команда для просмотра списка дней рождений
+@client.on(events.NewMessage(pattern='/list'))
+async def list_birthdays(event):
+    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ?', (event.chat_id,))
+    users = cursor.fetchall()
+    
+    if not users:
+        message = await event.respond("Нет записанных дней рождений. 😥")
     else:
-        await event.respond("Нет активной операции добавления дня рождения.")
-
-# Запись дня рождения в базу данных
-@client.on(events.NewMessage)
-async def handle_date_input(event):
-    if event.sender_id in user_states and user_states[event.sender_id] == 'awaiting_date':
-        if event.message.text.startswith('/'):
-            return
-
-        date_str = event.message.text
-
-        try:
-            date_of_birth = datetime.strptime(date_str, "%d-%m-%Y")
-            formatted_date = date_of_birth.strftime("%d %B").lower()
-
-            first_name = event.sender.first_name
-            last_name = event.sender.last_name if event.sender.last_name else None
-            username = event.sender.username if event.sender.username else None
-
-            cursor.execute('''
-                INSERT OR REPLACE INTO birthdays (user_id, chat_id, username, first_name, last_name, date_of_birth)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (event.sender_id, event.chat_id, username, first_name, last_name, formatted_date))
-            conn.commit()
-
-            del user_states[event.sender_id]
+        message = "🗓️ Дни рождения участников чата:\n \n"
+        for user in users:
+            first_name, last_name, date_of_birth = user
             last_name_text = f" {last_name}" if last_name else ""
-            await event.respond(f"День рождения добавлен для {first_name}{last_name_text}: {formatted_date}.")
-        except ValueError:
-            await event.respond("Неверный формат даты. Используйте формат ДД-ММ-ГГГГ.")
+            message += f"{first_name}{last_name_text} - {date_of_birth}\n"
+        message = await event.respond(message)
+    
+    asyncio.create_task(delete_message_later(event, message))
+
+# Команда для добавления дня рождения администратором
+@client.on(events.NewMessage(pattern='/admin_add'))
+async def add_user_birthday(event):
+    if not await is_admin(event.chat_id, event.sender_id):
+        message = await event.respond("❌ У вас нет прав администратора.")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    args = event.message.text.split()
+    if len(args) != 3:
+        message = await event.respond("ℹ️ Использование: /add_user @username ДД-ММ-ГГГГ")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    username, date_str = args[1], args[2]
+    try:
+        date_of_birth = datetime.strptime(date_str, "%d-%m-%Y").strftime("%d %B").lower()
+    except ValueError:
+        message = await event.respond("❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ.")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    user = await client.get_entity(username)
+    cursor.execute('''INSERT OR REPLACE INTO birthdays (user_id, chat_id, username, first_name, last_name, date_of_birth, added_by_admin)
+                      VALUES (?, ?, ?, ?, ?, ?, 1)''', (user.id, event.chat_id, username, user.first_name, user.last_name, date_of_birth))
+    conn.commit()
+    message = await event.respond(f"✅ День рождения {user.first_name} добавлен: {date_of_birth}.")
+    asyncio.create_task(delete_message_later(event, message))
+    
+# Команда для удаления дня рождения администратором
+@client.on(events.NewMessage(pattern='/admin_delete'))
+async def remove_user_birthday(event):
+    if not await is_admin(event.chat_id, event.sender_id):
+       message = await event.respond("❌ У вас нет прав администратора.")
+       asyncio.create_task(delete_message_later(event, message))
+       return
+    
+    args = event.message.text.split()
+    if len(args) != 2:
+        message = await event.respond("ℹ️ Использование: /remove_user @username")
+        asyncio.create_task(delete_message_later(event, message))
+        return
+    
+    username = args[1]
+    user = await client.get_entity(username)
+    cursor.execute('DELETE FROM birthdays WHERE user_id = ? AND chat_id = ?', (user.id, event.chat_id))
+    conn.commit()
+    message = await event.respond(f"✅ День рождения {user.first_name} удалён.")
+    asyncio.create_task(delete_message_later(event, message))
 
 # Отправка напоминания о дне рождении
 async def birthday_reminder():
     while True:
         now = datetime.now()
 
-        if now.time() >= time(8, 30) and now.time() < time(8, 31):
+        if now.hour == 6 and now.minute == 30:
             today = now.strftime("%d %B").lower()
             cursor.execute('SELECT chat_id, username FROM birthdays WHERE date_of_birth = ?', (today,))
             users = cursor.fetchall()
 
             for chat_id, username in users:
-                await client.send_message(chat_id, f"Сегодня день рождения у @{username}! Поздравляем! 🎉")
+                await client.send_message(chat_id, f"Сегодня день рождения у @{username}! \n Поздравляем! 🎉")
 
         await asyncio.sleep(60)
 
-# Вывод всех записанных дней рождений
-@client.on(events.NewMessage(pattern='/list'))
-async def list_birthdays(event):
-    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ?', (event.chat_id,))
-    users = cursor.fetchall()
-
-    if not users:
-        await event.respond("Нет записанных дней рождений.")
-    else:
-        # Сортировка с использованием функции date_to_sort_key
-        sorted_users = sorted(users, key=lambda x: date_to_sort_key(x[2]))
-
-        # Формирование сообщения
-        message = "Дни рождения:\n"
-        for user in sorted_users:
-            first_name, last_name, date_of_birth = user
-            last_name_text = f" {last_name}" if last_name else ""
-            message += f"{first_name}{last_name_text} - {date_of_birth}\n"
-        
-        await event.respond(message)
-
-# Запуск задачи напоминания о днях рождения
+# Запуск бота
 async def main():
     asyncio.create_task(birthday_reminder())
     await client.start()
