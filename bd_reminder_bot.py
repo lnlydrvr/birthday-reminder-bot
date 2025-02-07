@@ -1,10 +1,11 @@
 import os
 import sqlite3
 import asyncio
-from datetime import datetime, time
+from datetime import datetime
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.tl.types import ChannelParticipantsAdmins
+import locale
 
 # Загрузка конфигурации из .env файла
 load_dotenv()
@@ -12,6 +13,7 @@ load_dotenv()
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 # Инициализация клиента
 client = TelegramClient('birthday_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
