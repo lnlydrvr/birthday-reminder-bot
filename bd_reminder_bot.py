@@ -100,7 +100,7 @@ async def add_birthday(event):
 # Команда для просмотра списка дней рождений
 @client.on(events.NewMessage(pattern='/list'))
 async def list_birthdays(event):
-    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ?', (event.chat_id,))
+    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ? ORDER BY strftime("%m %d", date_of_birth)', (event.chat_id,))
     users = cursor.fetchall()
     
     if not users:
@@ -131,7 +131,7 @@ async def add_user_birthday(event):
     
     username, date_str = args[1], args[2]
     try:
-        date_of_birth = datetime.strptime(date_str, "%d-%m-%Y").strftime("%d %B").lower()
+        date_of_birth = format_date_russian(datetime.strptime(date_str, "%d-%m-%Y"))
     except ValueError:
         message = await event.respond("❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ.")
         asyncio.create_task(delete_message_later(event, message))
