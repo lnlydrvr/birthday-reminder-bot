@@ -1,12 +1,9 @@
-FROM python:3.13
-
+FROM python:3.11
+COPY . /app
 WORKDIR /app
-COPY . .
-
 RUN bash /app/locales.sh
-RUN pip install --root-user-action ignore --no-cache-dir -r requirements.txt
-RUN touch /app/birthdays.db && chmod 666 /app/birthdays.db
-
+RUN pip install --root-user-action ignore -r requirements.txt 
+RUN touch /app/birthdays.db
 EXPOSE 8443
-
-ENTRYPOINT ["python", "-u", "bd_reminder_bot.py"]
+ENTRYPOINT ["python"]
+CMD ["bd_reminder_bot.py"]
