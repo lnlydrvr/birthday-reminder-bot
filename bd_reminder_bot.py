@@ -118,9 +118,6 @@ async def list_birthdays(event):
         sorted_users = sorted(users, key=lambda x: date_to_sort_key(x[2]))
 
         message = "🗓️ Дни рождения участников чата:\n \n"
-        for user in users:
-            last_name_text = f" {user[1]}" if user[1] else ""
-            message += f"{user[0]}{last_name_text}: {user[2]}\n"
         for user in sorted_users:
             first_name, last_name, date_of_birth = user
             last_name_text = f" {last_name}" if last_name else ""
