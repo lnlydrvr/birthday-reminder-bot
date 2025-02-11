@@ -97,22 +97,26 @@ async def add_birthday(event):
     message = await event.respond(f"✅ Ваш день рождения добавлен: {date_of_birth}.")
     asyncio.create_task(delete_message_later(event, message))
 
-# Команда для просмотра списка дней рождений
 @client.on(events.NewMessage(pattern='/list'))
 async def list_birthdays(event):
-    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ? ORDER BY strftime("%m %d", date_of_birth)', (event.chat_id,))
+    cursor.execute('SELECT first_name, last_name, date_of_birth FROM birthdays WHERE chat_id = ?', (event.chat_id,))
     users = cursor.fetchall()
-    
+
     if not users:
         message = await event.respond("Нет записанных дней рождений. 😥")
     else:
+        # Преобразуем строки даты в объекты datetime для сортировки
+        users_sorted = sorted(users, key=lambda user: datetime.strptime(user[2], "%d-%m-%Y"))
+
         message = "🗓️ Дни рождения участников чата:\n \n"
-        for user in users:
+        for user in users_sorted:
             first_name, last_name, date_of_birth = user
             last_name_text = f" {last_name}" if last_name else ""
-            message += f"{first_name}{last_name_text} - {date_of_birth}\n"
+            formatted_date = datetime.strptime(date_of_birth, "%d-%m-%Y").strftime("%d %B")
+            message += f"{first_name}{last_name_text} - {formatted_date}\n"
+        
         message = await event.respond(message)
-    
+
     asyncio.create_task(delete_message_later(event, message))
 
 # Команда для добавления дня рождения администратором
