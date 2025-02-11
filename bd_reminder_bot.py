@@ -125,7 +125,7 @@ async def add_user_birthday(event):
     
     args = event.message.text.split()
     if len(args) != 3:
-        message = await event.respond("ℹ️ Использование: /add_user @username ДД-ММ-ГГГГ")
+        message = await event.respond("ℹ️ Использование: /admin_add @username ДД-ММ-ГГГГ")
         asyncio.create_task(delete_message_later(event, message))
         return
     
@@ -154,7 +154,7 @@ async def remove_user_birthday(event):
     
     args = event.message.text.split()
     if len(args) != 2:
-        message = await event.respond("ℹ️ Использование: /remove_user @username")
+        message = await event.respond("ℹ️ Использование: /admin_delete @username")
         asyncio.create_task(delete_message_later(event, message))
         return
     
