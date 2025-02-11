@@ -45,6 +45,15 @@ MONTHS_TRANSLATION = {
     'September': 'сентября', 'October': 'октября', 'November': 'ноября', 'December': 'декабря'
 }
 
+MONTHS = {
+    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
+    'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
+}
+# Функция для преобразования даты в числовой формат для сортировки
+def date_to_sort_key(date):
+    day, month = date.split()
+    return (MONTHS[month], int(day))
+
 def format_date_russian(date):
     day = date.strftime("%d")
     month = date.strftime("%B")  # Получаем название месяца на английском
@@ -105,15 +114,17 @@ async def list_birthdays(event):
     if not users:
         message = await event.respond("Нет записанных дней рождений. 😥")
     else:
-        # Преобразуем строки даты в объекты datetime для сортировки
-        users_sorted = sorted(users, key=lambda user: datetime.strptime(user[2], "%d-%m-%Y"))
+        # Сортировка с использованием функции date_to_sort_key
+        sorted_users = sorted(users, key=lambda x: date_to_sort_key(x[2]))
 
         message = "🗓️ Дни рождения участников чата:\n \n"
-        for user in users_sorted:
+        for user in users:
+            last_name_text = f" {user[1]}" if user[1] else ""
+            message += f"{user[0]}{last_name_text}: {user[2]}\n"
+        for user in sorted_users:
             first_name, last_name, date_of_birth = user
             last_name_text = f" {last_name}" if last_name else ""
-            formatted_date = datetime.strptime(date_of_birth, "%d-%m-%Y").strftime("%d %B")
-            message += f"{first_name}{last_name_text} - {formatted_date}\n"
+            message += f"{first_name}{last_name_text} - {date_of_birth}\n"
         
         message = await event.respond(message)
 
