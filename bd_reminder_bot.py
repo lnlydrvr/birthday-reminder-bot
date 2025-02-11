@@ -7,13 +7,15 @@ from telethon import TelegramClient, events
 from telethon.tl.types import ChannelParticipantsAdmins
 import locale
 
+# Устанавливаем локализацию на русский язык (убрана для Docker)
+# locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
+
 # Загрузка конфигурации из .env файла
 load_dotenv()
 
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 # Инициализация клиента
 client = TelegramClient('birthday_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -36,6 +38,17 @@ CREATE TABLE IF NOT EXISTS birthdays (
 )
 ''')
 conn.commit()
+
+MONTHS_TRANSLATION = {
+    'january': 'января', 'february': 'февраля', 'march': 'марта', 'april': 'апреля',
+    'may': 'мая', 'june': 'июня', 'july': 'июля', 'august': 'августа',
+    'september': 'сентября', 'october': 'октября', 'november': 'ноября', 'december': 'декабря'
+}
+
+def format_date_russian(date):
+    day = date.strftime("%d")
+    month = date.strftime("%B")  # Получаем название месяца на английском
+    return f"{day} {MONTHS_TRANSLATION[month]}"
 
 # Функция для проверки прав администратора
 async def is_admin(chat_id, user_id):
@@ -72,7 +85,7 @@ async def add_birthday(event):
     
     date_str = args[1]
     try:
-        date_of_birth = datetime.strptime(date_str, "%d-%m-%Y").strftime("%d %B").lower()
+        date_of_birth = format_date_russian(datetime.strptime(date_str, "%d-%m-%Y"))
     except ValueError:
         message = await event.respond("❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ.")
         asyncio.create_task(delete_message_later(event, message))
